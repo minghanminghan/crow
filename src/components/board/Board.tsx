@@ -61,7 +61,7 @@ async function imageSize(file: File) {
     const img = new Image();
     img.src = url;
     await img.decode();
-    const width = Math.min(320, img.naturalWidth);
+    const width = clamp(img.naturalWidth, 120, 320);
     return { width, height: Math.round((width * img.naturalHeight) / img.naturalWidth) };
   } catch {
     return { width: 320, height: 240 };
@@ -85,7 +85,7 @@ export default function Board({ id, initial }: { id: string; initial: CanvasDoc 
   const pointer = useRef<Point | null>(null);
   const space = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const firstRender = useRef(true);
+  const lastDoc = useRef(initial);
 
   const setView = useCallback((v: View) => {
     viewRef.current = v;
@@ -113,10 +113,8 @@ export default function Board({ id, initial }: { id: string; initial: CanvasDoc 
   }, [id, get]);
 
   useEffect(() => {
-    if (firstRender.current) {
-      firstRender.current = false;
-      return;
-    }
+    if (doc === lastDoc.current) return;
+    lastDoc.current = doc;
     setStatus("saving");
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(save, 500);
