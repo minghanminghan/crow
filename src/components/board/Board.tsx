@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { type DragEvent, type MouseEvent, type PointerEvent, useCallback, useEffect, useRef, useState } from "react";
-import { saveCanvasAction } from "@/app/actions";
 import {
   type CanvasDoc,
   type CanvasNode,
@@ -105,9 +104,11 @@ export default function Board({ id, initial }: { id: string; initial: CanvasDoc 
 
   // --- autosave ---
   const save = useCallback(() => {
+    clearTimeout(saveTimer.current);
     saveTimer.current = undefined;
-    saveCanvasAction(id, get()).then(
-      () => setStatus((s) => (saveTimer.current ? s : "saved")),
+    const body = JSON.stringify(get());
+    fetch(`/api/canvas/${id}`, { method: "PUT", body, keepalive: body.length < 60000 }).then(
+      (r) => setStatus((s) => (!r.ok ? "error" : saveTimer.current ? s : "saved")),
       () => setStatus("error"),
     );
   }, [id, get]);
@@ -120,15 +121,22 @@ export default function Board({ id, initial }: { id: string; initial: CanvasDoc 
     saveTimer.current = setTimeout(save, 500);
   }, [doc, save]);
 
-  useEffect(
-    () => () => {
-      if (saveTimer.current) {
-        clearTimeout(saveTimer.current);
-        save();
-      }
-    },
-    [save],
-  );
+  useEffect(() => {
+    const flush = () => saveTimer.current && save();
+    const onUnload = (e: BeforeUnloadEvent) => {
+      if (!saveTimer.current) return;
+      if (JSON.stringify(get()).length >= 60000) e.preventDefault();
+      save();
+    };
+    const onBlur = () => (space.current = false);
+    window.addEventListener("beforeunload", onUnload);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("beforeunload", onUnload);
+      window.removeEventListener("blur", onBlur);
+      flush();
+    };
+  }, [save, get]);
 
   // --- doc edits ---
   const patchNode = (nid: string, patch: Partial<CanvasNode>, record = false) =>
@@ -203,10 +211,12 @@ export default function Board({ id, initial }: { id: string; initial: CanvasDoc 
   };
 
   const onCanvasDown = (e: PointerEvent) => {
+    if ((e.target as Element).closest("[data-nodrag]")) return;
     if (e.button === 1 || (e.button === 0 && space.current)) return startPan(e);
     if (e.button !== 0) return;
     const p = toWorld(e);
     if (tool === "note") {
+      e.preventDefault();
       addNote(p);
       return setTool("select");
     }
