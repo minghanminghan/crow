@@ -6,7 +6,7 @@ import type { CanvasDoc, CanvasSummary } from "./canvas";
 const ID = /^[a-z0-9-]+$/;
 const suffix = customAlphabet("abcdefghijklmnopqrstuvwxyz0123456789", 4);
 
-export const dataDir = () => path.resolve(process.env.DATA_DIR ?? path.join(process.cwd(), "data"));
+export const dataDir = () => path.resolve(process.env.DATA_DIR ?? path.join(/*turbopackIgnore: true*/ process.cwd(), "data"));
 const assetsDir = () => path.join(dataDir(), "assets");
 
 function canvasPath(id: string) {
