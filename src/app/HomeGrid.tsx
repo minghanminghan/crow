@@ -50,7 +50,7 @@ export default function HomeGrid({ canvases }: { canvases: CanvasSummary[] }) {
   return (
     <>
       <header className="mb-8 flex items-center justify-between">
-        <h1 className="text-xl font-semibold tracking-tight">whiteboard</h1>
+        <h1 className="text-xl font-semibold tracking-tight">crow</h1>
         <button
           onClick={create}
           className="rounded-md bg-stone-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-stone-700"

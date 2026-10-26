@@ -72,7 +72,7 @@ export async function fetchPreview(url: string): Promise<Preview> {
   try {
     const res = await fetch(parsed, {
       signal: AbortSignal.timeout(5000),
-      headers: { "user-agent": "Mozilla/5.0 (compatible; whiteboard-preview)", accept: "text/html" },
+      headers: { "user-agent": "Mozilla/5.0 (compatible; crow-preview)", accept: "text/html" },
     });
     if (!res.ok || !(res.headers.get("content-type") ?? "").includes("html")) return fallback;
     return parsePreview(await readCapped(res), res.url || url);
