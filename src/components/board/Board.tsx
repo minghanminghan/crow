@@ -53,7 +53,7 @@ async function imageSize(file: File) {
   }
 }
 
-export default function Board({ id, initial }: { id: string; initial: CanvasDoc }) {
+export default function Board({ id, initial, version: initialVersion }: { id: string; initial: CanvasDoc; version: string }) {
   const { doc, get, set, undo, redo, checkpoint } = useHistory(initial);
   const [view, setViewState] = useState(() => initialView(initial.nodes));
   const viewRef = useRef(view);
@@ -70,6 +70,8 @@ export default function Board({ id, initial }: { id: string; initial: CanvasDoc 
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const previewTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const lastDoc = useRef(initial);
+  const version = useRef(initialVersion);
+  const queue = useRef(Promise.resolve());
 
   const setView = useCallback((v: View) => {
     viewRef.current = v;
@@ -87,16 +89,46 @@ export default function Board({ id, initial }: { id: string; initial: CanvasDoc 
     return toWorld({ clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 });
   };
 
-  // --- autosave ---
+  // --- autosave + live reload (saves and reloads run one at a time, tagged with the on-disk version) ---
+  const enqueue = useCallback((task: () => Promise<void>) => {
+    queue.current = queue.current.then(task).catch(() => setStatus("error"));
+  }, []);
+
+  const reload = useCallback(async () => {
+    const r = await fetch(`/api/canvas/${id}`);
+    const v = r.headers.get("x-version");
+    if (!r.ok || !v || v === version.current) return;
+    const remote = (await r.json()) as CanvasDoc;
+    version.current = v;
+    clearTimeout(saveTimer.current);
+    saveTimer.current = undefined;
+    lastDoc.current = remote;
+    set(remote);
+    setStatus("saved");
+  }, [id, set]);
+
   const save = useCallback(() => {
     clearTimeout(saveTimer.current);
     saveTimer.current = undefined;
     const body = JSON.stringify(get());
-    fetch(`/api/canvas/${id}`, { method: "PUT", body, keepalive: body.length < 60000 }).then(
-      (r) => setStatus((s) => (!r.ok ? "error" : saveTimer.current ? s : "saved")),
-      () => setStatus("error"),
-    );
-  }, [id, get]);
+    enqueue(async () => {
+      const r = await fetch(`/api/canvas/${id}`, {
+        method: "PUT",
+        body,
+        headers: { "x-version": version.current },
+        keepalive: body.length < 60000,
+      });
+      if (r.status === 409) return reload();
+      version.current = r.headers.get("x-version") ?? version.current;
+      setStatus((s) => (!r.ok ? "error" : saveTimer.current ? s : "saved"));
+    });
+  }, [id, get, enqueue, reload]);
+
+  useEffect(() => {
+    const events = new EventSource(`/api/canvas/${id}/events`);
+    events.onmessage = () => enqueue(reload);
+    return () => events.close();
+  }, [id, enqueue, reload]);
 
   useEffect(() => {
     if (doc === lastDoc.current) return;

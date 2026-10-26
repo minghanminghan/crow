@@ -2,12 +2,17 @@
   "name": "crow",
   "version": "0.1.0",
   "private": true,
+  "bin": {
+    "crow": "dist/crow.mjs"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "crow": "tsx src/cli/crow.ts",
+    "build:cli": "esbuild src/cli/crow.ts --bundle --platform=node --format=esm --outfile=dist/crow.mjs --banner:js='#!/usr/bin/env node'"
   },
   "dependencies": {
     "nanoid": "^6.0.2",
@@ -22,9 +27,11 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "esbuild": "^0.28.2",
     "eslint": "^9",
     "eslint-config-next": "16.4.2",
     "tailwindcss": "^4",
+    "tsx": "^4.23.15",
     "typescript": "^5",
     "vitest": "^5.0.5"
   },

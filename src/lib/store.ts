@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { nanoid, customAlphabet } from "nanoid";
@@ -48,19 +49,38 @@ export async function listCanvases(): Promise<CanvasSummary[]> {
   return out.sort((a, b) => b.mtime - a.mtime);
 }
 
-export async function readCanvas(id: string): Promise<CanvasDoc | null> {
+const version = (raw: string) => createHash("sha1").update(raw).digest("hex").slice(0, 16);
+
+export class Conflict extends Error {}
+
+export async function loadCanvas(id: string): Promise<{ doc: CanvasDoc; version: string } | null> {
   if (!ID.test(id)) return null;
   try {
-    const doc = JSON.parse(await fs.readFile(canvasPath(id), "utf8"));
-    return { ...doc, nodes: doc.nodes ?? [], edges: doc.edges ?? [] };
+    const raw = await fs.readFile(canvasPath(id), "utf8");
+    const doc = JSON.parse(raw);
+    return { doc: { ...doc, nodes: doc.nodes ?? [], edges: doc.edges ?? [] }, version: version(raw) };
   } catch {
     return null;
   }
 }
 
-export async function writeCanvas(id: string, doc: CanvasDoc) {
+export async function readCanvas(id: string) {
+  return (await loadCanvas(id))?.doc ?? null;
+}
+
+/** Writes atomically. With `base`, throws Conflict if the file changed since that version. Returns the new version. */
+export async function writeCanvas(id: string, doc: CanvasDoc, base?: string) {
   await fs.mkdir(dataDir(), { recursive: true });
-  await fs.writeFile(canvasPath(id), JSON.stringify(doc, null, "\t"));
+  const file = canvasPath(id);
+  if (base) {
+    const cur = await fs.readFile(file, "utf8").catch(() => null);
+    if (cur !== null && version(cur) !== base) throw new Conflict();
+  }
+  const raw = JSON.stringify(doc, null, "\t");
+  const tmp = `${file}.${suffix()}.tmp`;
+  await fs.writeFile(tmp, raw);
+  await fs.rename(tmp, file);
+  return version(raw);
 }
 
 export async function createCanvas(name: string) {
