@@ -11,6 +11,7 @@ import {
   fileKind,
   newId,
 } from "@/lib/canvas";
+import { applyChanges, diff } from "@/lib/diff";
 import EdgeLayer from "./EdgeLayer";
 import NodeView from "./NodeView";
 import Toolbar, { type Tool } from "./Toolbar";
@@ -54,7 +55,7 @@ async function imageSize(file: File) {
 }
 
 export default function Board({ id, initial, version: initialVersion }: { id: string; initial: CanvasDoc; version: string }) {
-  const { doc, get, set, undo, redo, checkpoint } = useHistory(initial);
+  const { doc, get, set, undo, redo, checkpoint, merge } = useHistory(initial);
   const [view, setViewState] = useState(() => initialView(initial.nodes));
   const viewRef = useRef(view);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -70,6 +71,7 @@ export default function Board({ id, initial, version: initialVersion }: { id: st
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const previewTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const lastDoc = useRef(initial);
+  const synced = useRef(initial);
   const version = useRef(initialVersion);
   const queue = useRef(Promise.resolve());
 
@@ -89,7 +91,10 @@ export default function Board({ id, initial, version: initialVersion }: { id: st
     return toWorld({ clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 });
   };
 
-  // --- autosave + live reload (saves and reloads run one at a time, tagged with the on-disk version) ---
+  // --- autosave + live reload ---
+  // `synced` is the server's doc as last seen here. Saves send only local changes since then.
+  // Reloads take the server's doc and replay unsaved local changes on top (they win when they save).
+  // Saves and reloads run one at a time.
   const enqueue = useCallback((task: () => Promise<void>) => {
     queue.current = queue.current.then(task).catch(() => setStatus("error"));
   }, []);
@@ -99,30 +104,27 @@ export default function Board({ id, initial, version: initialVersion }: { id: st
     const v = r.headers.get("x-version");
     if (!r.ok || !v || v === version.current) return;
     const remote = (await r.json()) as CanvasDoc;
+    merge(applyChanges(remote, diff(synced.current, get()), "after"), diff(synced.current, remote));
+    lastDoc.current = get();
+    synced.current = remote;
     version.current = v;
-    clearTimeout(saveTimer.current);
-    saveTimer.current = undefined;
-    lastDoc.current = remote;
-    set(remote);
-    setStatus("saved");
-  }, [id, set]);
+  }, [id, get, merge]);
 
   const save = useCallback(() => {
     clearTimeout(saveTimer.current);
     saveTimer.current = undefined;
-    const body = JSON.stringify(get());
     enqueue(async () => {
-      const r = await fetch(`/api/canvas/${id}`, {
-        method: "PUT",
-        body,
-        headers: { "x-version": version.current },
-        keepalive: body.length < 60000,
-      });
-      if (r.status === 409) return reload();
-      version.current = r.headers.get("x-version") ?? version.current;
-      setStatus((s) => (!r.ok ? "error" : saveTimer.current ? s : "saved"));
+      const changes = diff(synced.current, get());
+      if (changes.length) {
+        const body = JSON.stringify(changes);
+        const r = await fetch(`/api/canvas/${id}`, { method: "PATCH", body, keepalive: body.length < 60000 });
+        if (!r.ok) return setStatus("error");
+        synced.current = applyChanges(synced.current, changes, "after");
+        version.current = r.headers.get("x-version") ?? version.current;
+      }
+      setStatus((s) => (saveTimer.current ? s : "saved"));
     });
-  }, [id, get, enqueue, reload]);
+  }, [id, get, enqueue]);
 
   useEffect(() => {
     const events = new EventSource(`/api/canvas/${id}/events`);

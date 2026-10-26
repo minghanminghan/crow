@@ -12,7 +12,7 @@ const HELP = `crow — read and edit boards in ./data (or $DATA_DIR). Output is 
   crow delete-board <board>
   crow show <board> [--short] [--includes <text>] [--links <node>] [--type text|file]
   crow add <board> <text|-> [--near <node>] [--x --y --width --height --color]
-  crow edit <board> <node> [--text <text|->] [--color] [--x --y | --dx --dy] [--width --height]
+  crow edit <board> <node> [--text <text|-> | --append <text|->] [--color] [--x --y | --dx --dy] [--width --height]
   crow edit <board> <arrow> [--label] [--from <node>] [--to <node>]
   crow arrow <board> <from> <to> [--label]  (alias: link)
   crow rm <board> <id...>                   delete nodes (and their arrows) or arrows
@@ -20,17 +20,17 @@ const HELP = `crow — read and edit boards in ./data (or $DATA_DIR). Output is 
 
 Ids can be shortened to any unique prefix. "-" reads text from stdin.
 New notes go right of --near (default: the last note), below anything in the way.
-An empty --label or --color clears it.
+--append adds a line to a note without overwriting other writers. An empty --label or --color clears it.
 
 batch reads a JSON array or one JSON op per line. "$N" refers to the id made by op N:
   {"op":"add","text":"a"}
   {"op":"add","text":"b","near":"$0"}
   {"op":"arrow","from":"$0","to":"$1","label":"then"}
-  {"op":"edit","id":"$1","dy":40}
+  {"op":"edit","id":"$1","dy":40,"append":"more"}
   {"op":"rm","ids":["$0"]}`;
 
 const NUMBERS = ["x", "y", "dx", "dy", "width", "height"];
-const STRINGS = ["color", "text", "label", "from", "to", "near", "includes", "links", "type"];
+const STRINGS = ["color", "text", "append", "label", "from", "to", "near", "includes", "links", "type"];
 
 class Fail extends Error {}
 const fail = (msg: string): never => {
@@ -74,7 +74,7 @@ function flags(keys: string[]) {
   for (const k of keys) {
     const v = (opt as Record<string, unknown>)[k];
     if (typeof v !== "string") continue;
-    if (!NUMBERS.includes(k)) out[k] = k === "text" ? text(v) : v;
+    if (!NUMBERS.includes(k)) out[k] = k === "text" || k === "append" ? text(v) : v;
     else if (Number.isFinite(Number(v))) out[k] = Number(v);
     else fail(`--${k} must be a number`);
   }
@@ -125,7 +125,7 @@ async function run(): Promise<unknown> {
     case "add":
       return one({ op: "add", text: text(need(2, "text")), ...flags(["near", "x", "y", "width", "height", "color"]) });
     case "edit":
-      return one({ op: "edit", id: need(2, "node or arrow"), ...flags([...NUMBERS, "text", "color", "label", "from", "to"]) });
+      return one({ op: "edit", id: need(2, "node or arrow"), ...flags([...NUMBERS, "text", "append", "color", "label", "from", "to"]) });
     case "arrow":
     case "link":
       return one({ op: "arrow", from: need(2, "from"), to: need(3, "to"), ...flags(["label"]) });

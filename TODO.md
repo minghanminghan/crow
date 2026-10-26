@@ -11,10 +11,9 @@
 
 ## CLI limitations
 
-- Live reload drops unsaved browser edits. If a CLI change lands within ~500ms of typing, those keystrokes are lost.
-- Undo in an open tab can revert a CLI change (history stores whole-doc snapshots).
+- Merging is per property, last writer wins. Two writers rewriting the same note with `--text` (or typing in it) at once: the last save wins the whole text. Agents adding to a shared note should use `edit --append`.
+- Undoing a deleted node puts it back on top (z-order isn't restored).
 - Text notes only. No `add --file` for images/files; `edit --text` fails on file nodes.
-- `rename` writes without a version check, so it can (rarely) clobber a browser save.
 - `--color` isn't validated (JSON Canvas expects `1`–`6` or a hex color).
 - No CLI tests.
 - Notes with a URL fetch a link preview over the network, which slows `add`/`edit` (and batch retries refetch).
@@ -22,5 +21,4 @@
 ## CLI open questions
 
 - Who's the main user, people or agents? Agents want batch ops and compact output; people want readable output.
-- Should remote changes merge with unsaved browser edits instead of replacing them?
 - MCP server or Claude skill on top of the CLI?

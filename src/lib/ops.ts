@@ -1,9 +1,9 @@
 import { intersects } from "../components/board/geometry";
 import { type CanvasDoc, type CanvasEdge, type CanvasNode, type TextNode, newId } from "./canvas";
 import { fetchPreview } from "./preview";
-import { Conflict, loadCanvas, writeCanvas } from "./store";
+import { Conflict, updateCanvas } from "./store";
 
-type NodeFields = { text?: string; color?: string; x?: number; y?: number; width?: number; height?: number };
+type NodeFields = { text?: string; append?: string; color?: string; x?: number; y?: number; width?: number; height?: number };
 type ArrowFields = { label?: string; from?: string; to?: string };
 
 /** Board edits as data. Refs are ids, unique id prefixes, or "$N" for the id made by op N of the same batch. */
@@ -22,7 +22,7 @@ const fail = (msg: string): never => {
 
 const URL_IN_TEXT = /https?:\/\/[^\s<>()]+/;
 const GAP = 40;
-const NODE_KEYS = ["text", "color", "x", "y", "dx", "dy", "width", "height"];
+const NODE_KEYS = ["text", "append", "color", "x", "y", "dx", "dy", "width", "height"];
 const ARROW_KEYS = ["label", "from", "to"];
 
 export function find<T extends { id: string }>(items: T[], ref: string) {
@@ -95,9 +95,12 @@ async function apply(doc: CanvasDoc, op: Op, ref: (r: string) => string): Promis
       const n = hit as CanvasNode;
       const bad = keys.filter((k) => !NODE_KEYS.includes(k));
       if (bad.length) fail(`a node can't take ${bad.join(", ")}`);
-      if (op.text !== undefined) {
+      if (op.text !== undefined || op.append !== undefined) {
         if (n.type !== "text") fail("only text nodes have text");
-        await setText(n as TextNode, op.text);
+        if (op.text !== undefined && op.append !== undefined) fail("use text or append, not both");
+        // append reads the note at save time, so concurrent appends don't overwrite each other
+        const t = (n as TextNode).text;
+        await setText(n as TextNode, op.text ?? (t && !t.endsWith("\n") ? `${t}\n${op.append}` : t + op.append));
       }
       if (op.color !== undefined) n.color = op.color || undefined;
       n.x = (num(op.x, "x") ?? n.x) + (num(op.dx, "dx") ?? 0);
@@ -127,26 +130,20 @@ async function apply(doc: CanvasDoc, op: Op, ref: (r: string) => string): Promis
   }
 }
 
-/** Applies all ops in one load + save, or none if any fails. Retries if the board was saved in between. */
+/** Applies all ops in one load + save, or none if any fails. */
 export async function applyOps(id: string, ops: Op[]) {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const loaded = (await loadCanvas(id)) ?? fail(`no board "${id}"`);
-    const results: object[] = [];
-    const ref = (r: string) => {
-      const m = /^\$(\d+)$/.exec(r);
-      if (!m) return r;
-      const made = results[Number(m[1])];
-      return made && "id" in made ? (made.id as string) : fail(`${r} has no id`);
-    };
-    for (const op of ops) results.push(await apply(loaded.doc, op, ref));
-    try {
-      await writeCanvas(id, loaded.doc, loaded.version);
-      return results;
-    } catch (e) {
-      if (!(e instanceof Conflict)) throw e;
-    }
-  }
-  return fail("board kept changing, try again");
+  let results: object[] = [];
+  const ref = (r: string) => {
+    const m = /^\$(\d+)$/.exec(r);
+    if (!m) return r;
+    const made = results[Number(m[1])];
+    return made && "id" in made ? (made.id as string) : fail(`${r} has no id`);
+  };
+  const saved = await updateCanvas(id, async (doc) => {
+    results = [];
+    for (const op of ops) results.push(await apply(doc, op, ref));
+  }).catch((e) => (e instanceof Conflict ? fail(e.message) : Promise.reject(e)));
+  return saved === null ? fail(`no board "${id}"`) : results;
 }
 
 /** Filters a board; arrows are kept when both ends are kept. */
