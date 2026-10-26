@@ -272,8 +272,10 @@ export default function Board({ id, initial }: { id: string; initial: CanvasDoc 
       if (editing) endEdit();
       setSelected(new Set());
     } else if (d.kind === "connect") {
-      const el = document.elementFromPoint(e.clientX, e.clientY)?.closest("[data-node-id]");
-      const target = nodes.find((n) => n.id === el?.getAttribute("data-node-id"));
+      const pad = 32 / viewRef.current.zoom;
+      const target = nodes.findLast(
+        (n) => n.id !== d.from && p.x > n.x - pad && p.x < n.x + n.width + pad && p.y > n.y - pad && p.y < n.y + n.height + pad,
+      );
       const from = nodes.find((n) => n.id === d.from);
       if (target && from && target.id !== from.id) {
         const toSide = nearestSides(from, target)[1];

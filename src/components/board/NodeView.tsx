@@ -163,12 +163,14 @@ export default function NodeView(props: Props) {
       {SIDES.map(({ side, cls }) => (
         <div
           key={side}
-          className={`absolute ${cls} h-3 w-3 cursor-crosshair rounded-full border-2 border-blue-500 bg-white opacity-0 group-hover/node:opacity-100`}
+          className={`absolute ${cls} flex h-7 w-7 cursor-crosshair items-center justify-center opacity-0 group-hover/node:opacity-100`}
           onPointerDown={(e) => {
             e.stopPropagation();
             onHandleDown(e, node.id, side);
           }}
-        />
+        >
+          <div className="h-3 w-3 rounded-full border-2 border-blue-500 bg-white" />
+        </div>
       ))}
       {selected && (
         <div
