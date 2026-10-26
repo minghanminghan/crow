@@ -30,9 +30,6 @@ export const nearestSides = (a: Rect, b: Rect): [Side, Side] => [
   sideToward(b, center(a)),
 ];
 
-export const contains = (o: Rect, i: Rect) =>
-  i.x >= o.x && i.y >= o.y && i.x + i.width <= o.x + o.width && i.y + i.height <= o.y + o.height;
-
 export const intersects = (a: Rect, b: Rect) =>
   a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
 

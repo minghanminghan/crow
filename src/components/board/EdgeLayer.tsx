@@ -4,20 +4,49 @@ import type { PointerEvent } from "react";
 import type { CanvasEdge, CanvasNode } from "@/lib/canvas";
 import { DIR, type Point, type Rect, anchor, nearestSides } from "./geometry";
 
+const STUB = 24;
+const swap = (p: Point): Point => ({ x: p.y, y: p.x });
+
+/** Orthogonal bends between stub ends s1 and s2, assuming d1 is horizontal. */
+function bends(s1: Point, d1: Point, s2: Point, d2: Point): Point[] {
+  if (d2.x !== 0) {
+    let x = (s1.x + s2.x) / 2;
+    if (d1.x === d2.x) x = d1.x > 0 ? Math.max(s1.x, s2.x) : Math.min(s1.x, s2.x);
+    else if ((x - s1.x) * d1.x < 0) {
+      const y = (s1.y + s2.y) / 2;
+      return [{ x: s1.x, y }, { x: s2.x, y }];
+    }
+    return [{ x, y: s1.y }, { x, y: s2.y }];
+  }
+  const c = { x: s2.x, y: s1.y };
+  return (c.x - s1.x) * d1.x >= 0 && (c.y - s2.y) * d2.y >= 0 ? [c] : [{ x: s1.x, y: s2.y }];
+}
+
+function midpoint(pts: Point[]): Point {
+  const lens = pts.slice(1).map((p, i) => Math.hypot(p.x - pts[i].x, p.y - pts[i].y));
+  let left = lens.reduce((a, b) => a + b, 0) / 2;
+  for (const [i, len] of lens.entries()) {
+    if (left <= len && len > 0) {
+      const t = left / len;
+      return { x: pts[i].x + (pts[i + 1].x - pts[i].x) * t, y: pts[i].y + (pts[i + 1].y - pts[i].y) * t };
+    }
+    left -= len;
+  }
+  return pts[0];
+}
+
 function edgeGeometry(a: Rect, b: Rect, e: CanvasEdge) {
   const [fs, ts] = nearestSides(a, b);
   const from = e.fromSide ?? fs;
   const to = e.toSide ?? ts;
+  const [d1, d2] = [DIR[from], DIR[to]];
   const p1 = anchor(a, from);
   const p2 = anchor(b, to);
-  const k = Math.max(40, Math.hypot(p2.x - p1.x, p2.y - p1.y) / 3);
-  const c1 = { x: p1.x + DIR[from].x * k, y: p1.y + DIR[from].y * k };
-  const c2 = { x: p2.x + DIR[to].x * k, y: p2.y + DIR[to].y * k };
-  return {
-    d: `M${p1.x},${p1.y} C${c1.x},${c1.y} ${c2.x},${c2.y} ${p2.x},${p2.y}`,
-    mid: { x: (p1.x + 3 * c1.x + 3 * c2.x + p2.x) / 8, y: (p1.y + 3 * c1.y + 3 * c2.y + p2.y) / 8 },
-    pts: [p1, c1, c2, p2],
-  };
+  const s1 = { x: p1.x + d1.x * STUB, y: p1.y + d1.y * STUB };
+  const s2 = { x: p2.x + d2.x * STUB, y: p2.y + d2.y * STUB };
+  const mid = d1.x !== 0 ? bends(s1, d1, s2, d2) : bends(swap(s1), swap(d1), swap(s2), swap(d2)).map(swap);
+  const pts = [p1, s1, ...mid, s2, p2];
+  return { d: `M${pts.map((p) => `${p.x},${p.y}`).join(" L")}`, mid: midpoint(pts), pts };
 }
 
 type Props = {

@@ -14,7 +14,7 @@ import {
 import EdgeLayer from "./EdgeLayer";
 import NodeView from "./NodeView";
 import Toolbar, { type Tool } from "./Toolbar";
-import { type Point, type Rect, anchor, contains, intersects, nearestSides, normalize } from "./geometry";
+import { type Point, type Rect, anchor, intersects, nearestSides, normalize } from "./geometry";
 import { useHistory } from "./useHistory";
 
 type View = { x: number; y: number; zoom: number };
@@ -23,12 +23,12 @@ type Drag =
   | { kind: "move"; sx: number; sy: number; start: Map<string, Point>; moved: boolean }
   | { kind: "resize"; id: string; sx: number; sy: number; w: number; h: number; moved: boolean }
   | { kind: "connect"; from: string; side: Side }
-  | { kind: "marquee"; start: Point }
-  | { kind: "group"; start: Point };
+  | { kind: "marquee"; start: Point };
 type Ghost = { rect: Rect } | { from: Point; to: Point } | null;
 type ClientPoint = { clientX: number; clientY: number };
 
 const URL_RE = /^https?:\/\/\S+$/;
+const URL_IN_TEXT = /https?:\/\/[^\s<>()]+/;
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 const isTyping = (t: EventTarget | null) =>
   t instanceof HTMLElement && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
@@ -36,22 +36,6 @@ const isTyping = (t: EventTarget | null) =>
 function initialView(nodes: CanvasNode[]): View {
   if (!nodes.length) return { x: 0, y: 0, zoom: 1 };
   return { x: 80 - Math.min(...nodes.map((n) => n.x)), y: 80 - Math.min(...nodes.map((n) => n.y)), zoom: 1 };
-}
-
-/** Nodes that move with `ids`: groups carry everything fully inside them, recursively. */
-function movingSet(nodes: CanvasNode[], ids: Set<string>) {
-  const out = new Set(ids);
-  for (let grew = true; grew; ) {
-    grew = false;
-    for (const g of nodes)
-      if (g.type === "group" && out.has(g.id))
-        for (const n of nodes)
-          if (!out.has(n.id) && contains(g, n)) {
-            out.add(n.id);
-            grew = true;
-          }
-  }
-  return out;
 }
 
 async function imageSize(file: File) {
@@ -84,6 +68,7 @@ export default function Board({ id, initial }: { id: string; initial: CanvasDoc 
   const pointer = useRef<Point | null>(null);
   const space = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const previewTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const lastDoc = useRef(initial);
 
   const setView = useCallback((v: View) => {
@@ -150,18 +135,28 @@ export default function Board({ id, initial }: { id: string; initial: CanvasDoc 
     setEditing(edit ? node.id : null);
   };
 
+  /** Keeps a note's preview in step with the first link in its text (debounced while typing). */
+  const syncPreview = (nid: string, text: string) => {
+    clearTimeout(previewTimer.current);
+    const url = text.match(URL_IN_TEXT)?.[0];
+    const current = () => get().nodes.find((n): n is TextNode => n.id === nid && n.type === "text");
+    if (!url) return void (current()?.preview && patchNode(nid, { preview: undefined }));
+    if (current()?.preview?.url === url) return;
+    previewTimer.current = setTimeout(() => {
+      fetch(`/api/preview?url=${encodeURIComponent(url)}`)
+        .then((r) => r.json() as Promise<Preview>)
+        .catch(() => ({}))
+        .then((p) => {
+          const n = current();
+          if (n && n.text.match(URL_IN_TEXT)?.[0] === url) patchNode(nid, { preview: { url, ...p } });
+        });
+    }, 500);
+  };
+
   const addNote = (at: Point, text = "") => {
     const node: TextNode = { id: newId(), type: "text", text, x: Math.round(at.x), y: Math.round(at.y), width: 260, height: 140 };
     addNode(node, !text);
-  };
-
-  const addLink = (url: string, at: Point) => {
-    const nid = newId();
-    addNode({ id: nid, type: "link", url, x: Math.round(at.x), y: Math.round(at.y), width: 300, height: 240 });
-    fetch(`/api/preview?url=${encodeURIComponent(url)}`)
-      .then((r) => r.json() as Promise<Preview>)
-      .then((p) => patchNode(nid, p.image ? p : { ...p, height: 96 }))
-      .catch(() => patchNode(nid, { height: 96 }));
+    if (text) syncPreview(node.id, text);
   };
 
   const addFiles = async (files: File[], at: Point) => {
@@ -220,10 +215,6 @@ export default function Board({ id, initial }: { id: string; initial: CanvasDoc 
       addNote(p);
       return setTool("select");
     }
-    if (tool === "group") {
-      drag.current = { kind: "group", start: p };
-      return;
-    }
     if (e.shiftKey) {
       drag.current = { kind: "marquee", start: p };
       return;
@@ -246,9 +237,7 @@ export default function Board({ id, initial }: { id: string; initial: CanvasDoc 
     } else if (!selected.has(nid)) sel = new Set([nid]);
     setSelected(sel);
     if (editing && editing !== nid) endEdit();
-    const nodes = get().nodes;
-    const ids = movingSet(nodes, sel);
-    const start = new Map(nodes.filter((n) => ids.has(n.id)).map((n) => [n.id, { x: n.x, y: n.y }]));
+    const start = new Map(get().nodes.filter((n) => sel.has(n.id)).map((n) => [n.id, { x: n.x, y: n.y }]));
     drag.current = { kind: "move", sx: e.clientX, sy: e.clientY, start, moved: false };
   };
 
@@ -296,12 +285,6 @@ export default function Board({ id, initial }: { id: string; initial: CanvasDoc 
     } else if (d.kind === "marquee") {
       const r = normalize(d.start, p);
       setSelected(new Set(nodes.filter((n) => intersects(r, n)).map((n) => n.id)));
-    } else if (d.kind === "group") {
-      let r = normalize(d.start, p);
-      if (r.width < 80 || r.height < 60) r = { ...d.start, width: 400, height: 300 };
-      const rounded = { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) };
-      addNode({ id: newId(), type: "group", label: "", ...rounded }, true);
-      setTool("select");
     }
   };
 
@@ -345,7 +328,6 @@ export default function Board({ id, initial }: { id: string; initial: CanvasDoc 
         break;
       }
       case "marquee":
-      case "group":
         setGhost({ rect: normalize(d.start, toWorld(e)) });
         break;
     }
@@ -356,8 +338,7 @@ export default function Board({ id, initial }: { id: string; initial: CanvasDoc 
     if (t.closest("[data-nodrag]") || t.closest("[data-edge-id]")) return;
     const n = get().nodes.find((n) => n.id === t.closest("[data-node-id]")?.getAttribute("data-node-id"));
     if (n?.type === "text") return startEdit(n.id);
-    if (n?.type === "group" && t.closest("[data-group-label]")) return startEdit(n.id);
-    if (n && n.type !== "group") return;
+    if (n) return;
     addNote(toWorld(e));
   };
 
@@ -368,7 +349,7 @@ export default function Board({ id, initial }: { id: string; initial: CanvasDoc 
     if (files.length) return void addFiles(files, at);
     const uris = e.dataTransfer.getData("text/uri-list").split(/\r?\n/);
     const url = [...uris, e.dataTransfer.getData("text/plain")].map((s) => s.trim()).find((s) => URL_RE.test(s));
-    if (url) addLink(url, at);
+    if (url) addNote(at, url);
   };
 
   // --- wheel: pan, ctrl/cmd or pinch to zoom ---
@@ -433,8 +414,7 @@ export default function Board({ id, initial }: { id: string; initial: CanvasDoc 
       const text = e.clipboardData?.getData("text/plain").trim();
       if (!text) return;
       e.preventDefault();
-      if (URL_RE.test(text)) addLink(text, at);
-      else addNote(at, text);
+      addNote(at, text);
     }
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
@@ -446,8 +426,6 @@ export default function Board({ id, initial }: { id: string; initial: CanvasDoc 
     };
   });
 
-  const groups = doc.nodes.filter((n) => n.type === "group").sort((a, b) => b.width * b.height - a.width * a.height);
-  const others = doc.nodes.filter((n) => n.type !== "group");
   const nodeView = (n: CanvasNode) => (
     <NodeView
       key={n.id}
@@ -457,7 +435,10 @@ export default function Board({ id, initial }: { id: string; initial: CanvasDoc 
       onPointerDown={onNodeDown}
       onHandleDown={onHandleDown}
       onResizeDown={onResizeDown}
-      onChange={(nid, patch) => patchNode(nid, patch)}
+      onChange={(nid, patch) => {
+        patchNode(nid, patch);
+        if (typeof patch.text === "string") syncPreview(nid, patch.text);
+      }}
       onEditEnd={endEdit}
     />
   );
@@ -507,7 +488,6 @@ export default function Board({ id, initial }: { id: string; initial: CanvasDoc 
             className="absolute left-0 top-0 origin-top-left"
             style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})` }}
           >
-            {groups.map(nodeView)}
             <EdgeLayer
               nodes={doc.nodes}
               edges={doc.edges}
@@ -524,7 +504,7 @@ export default function Board({ id, initial }: { id: string; initial: CanvasDoc 
               }
               onEditEnd={() => setEditing(null)}
             />
-            {others.map(nodeView)}
+            {doc.nodes.map(nodeView)}
             {ghost && "rect" in ghost && (
               <div
                 className="pointer-events-none absolute rounded border border-dashed border-blue-500 bg-blue-500/5"

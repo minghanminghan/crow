@@ -4,9 +4,10 @@ import { resolveDataPath, slug } from "./store";
 
 describe("parsePreview", () => {
   it("reads og tags and resolves relative images", () => {
-    const html = `<meta property="og:title" content="ColBERT &amp; friends"><meta content="/img.png" property="og:image">`;
+    const html = `<meta property="og:title" content="ColBERT &amp; friends"><meta content="/img.png" property="og:image"><meta name="description" content="Late interaction">`;
     expect(parsePreview(html, "https://www.arxiv.org/abs/1")).toEqual({
       title: "ColBERT & friends",
+      description: "Late interaction",
       image: "https://www.arxiv.org/img.png",
       site: "arxiv.org",
     });

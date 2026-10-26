@@ -12,17 +12,11 @@ export type BaseNode = {
   [k: string]: unknown;
 };
 
-export type TextNode = BaseNode & { type: "text"; text: string };
-export type LinkNode = BaseNode & {
-  type: "link";
-  url: string;
-  title?: string;
-  image?: string;
-  site?: string;
-};
+export type Preview = { title?: string; description?: string; image?: string; site?: string; small?: boolean };
+export type LinkPreview = Preview & { url: string; hidden?: boolean };
+export type TextNode = BaseNode & { type: "text"; text: string; preview?: LinkPreview };
 export type FileNode = BaseNode & { type: "file"; file: string };
-export type GroupNode = BaseNode & { type: "group"; label?: string };
-export type CanvasNode = TextNode | LinkNode | FileNode | GroupNode;
+export type CanvasNode = TextNode | FileNode;
 
 export type CanvasEdge = {
   id: string;
@@ -42,7 +36,6 @@ export type CanvasDoc = {
 };
 
 export type CanvasSummary = { id: string; name: string; items: number; mtime: number };
-export type Preview = { title?: string; image?: string; site?: string };
 
 export const newId = () => nanoid(16);
 

@@ -22,6 +22,15 @@ function meta(html: string, keys: string[]): string | undefined {
   }
 }
 
+/** Thumbnail vs banner layout, per twitter:card, else the declared og:image size. */
+function isSmall(html: string) {
+  const card = meta(html, ["twitter:card"]);
+  if (card) return card === "summary";
+  const w = Number(meta(html, ["og:image:width"]));
+  const h = Number(meta(html, ["og:image:height"]));
+  return w > 0 && h > 0 && (w < 400 || w / h < 1.3);
+}
+
 export function parsePreview(html: string, url: string): Preview {
   const host = new URL(url).hostname.replace(/^www\./, "");
   const tag = html.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1];
@@ -31,7 +40,9 @@ export function parsePreview(html: string, url: string): Preview {
   try {
     image = img ? new URL(img, url).href : undefined;
   } catch {}
-  return { title: title || undefined, image, site: meta(html, ["og:site_name"]) ?? host };
+  const description = meta(html, ["og:description", "twitter:description", "description"]);
+  const site = meta(html, ["og:site_name"]) ?? host;
+  return { title: title || undefined, description, image, site, small: image && isSmall(html) ? true : undefined };
 }
 
 async function readCapped(res: Response): Promise<string> {

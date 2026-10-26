@@ -2,12 +2,11 @@
 
 import { useRef } from "react";
 
-export type Tool = "select" | "note" | "group";
+export type Tool = "select" | "note";
 
 const TOOLS: { id: Tool; label: string }[] = [
   { id: "select", label: "↖ Select" },
   { id: "note", label: "✎ Note" },
-  { id: "group", label: "▢ Group" },
 ];
 
 type Props = {
