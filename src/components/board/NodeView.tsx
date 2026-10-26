@@ -1,6 +1,6 @@
 "use client";
 
-import { type PointerEvent, useLayoutEffect, useRef } from "react";
+import { type KeyboardEvent, type MouseEvent, type PointerEvent, useLayoutEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { type CanvasNode, type Side, type LinkPreview, type TextNode, fileKind } from "@/lib/canvas";
@@ -33,6 +33,21 @@ type Props = {
   onChange: (id: string, patch: Partial<CanvasNode>) => void;
   onEditEnd: () => void;
 };
+
+/** Handles don't take focus, so a blank note being edited isn't ended (and removed) by grabbing one. */
+const keepFocus = (e: MouseEvent) => e.preventDefault();
+
+/** Cmd/Ctrl+K like Obsidian: wraps the selection as `[text]()`, or a selected URL as `[](url)`. */
+function insertLink(e: KeyboardEvent<HTMLTextAreaElement>) {
+  const el = e.currentTarget;
+  const { selectionStart: s, selectionEnd: end } = el;
+  const sel = el.value.slice(s, end);
+  const isUrl = /^https?:\/\/\S+$/.test(sel);
+  e.preventDefault();
+  document.execCommand("insertText", false, isUrl ? `[](${sel})` : `[${sel}]()`);
+  const caret = isUrl || !sel ? s + 1 : s + sel.length + 3;
+  el.setSelectionRange(caret, caret);
+}
 
 const card = "h-full w-full overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm";
 
@@ -97,7 +112,10 @@ function Note({ node, editing, onChange, onEditEnd }: Props & { node: TextNode }
           value={node.text}
           onChange={(e) => onChange(node.id, { text: e.target.value })}
           onBlur={onEditEnd}
-          onKeyDown={(e) => e.key === "Escape" && e.currentTarget.blur()}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") e.currentTarget.blur();
+            else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") insertLink(e);
+          }}
         />
       ) : (
         <div data-body data-scroll className="md min-h-0 flex-1 overflow-auto p-3 text-sm">
@@ -164,6 +182,7 @@ export default function NodeView(props: Props) {
         <div
           key={side}
           className={`absolute ${cls} flex h-7 w-7 cursor-crosshair items-center justify-center opacity-0 group-hover/node:opacity-100`}
+          onMouseDown={keepFocus}
           onPointerDown={(e) => {
             e.stopPropagation();
             onHandleDown(e, node.id, side);
@@ -175,6 +194,7 @@ export default function NodeView(props: Props) {
       {selected && (
         <div
           className="absolute -bottom-1.5 -right-1.5 h-3 w-3 cursor-nwse-resize rounded-sm border-2 border-blue-500 bg-white"
+          onMouseDown={keepFocus}
           onPointerDown={(e) => {
             e.stopPropagation();
             onResizeDown(e, node.id);
