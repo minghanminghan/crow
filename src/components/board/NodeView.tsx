@@ -37,16 +37,28 @@ type Props = {
 /** Handles don't take focus, so a blank note being edited isn't ended (and removed) by grabbing one. */
 const keepFocus = (e: MouseEvent) => e.preventDefault();
 
-/** Cmd/Ctrl+K like Obsidian: wraps the selection as `[text]()`, or a selected URL as `[](url)`. */
-function insertLink(e: KeyboardEvent<HTMLTextAreaElement>) {
+const WRAPS: Record<string, [string, string]> = { b: ["**", "**"], i: ["*", "*"] };
+
+/**
+ * Obsidian-style Cmd/Ctrl shortcuts. B/I wrap the selection (caret between markers if empty).
+ * K wraps it as `[text]()`, or a selected URL as `[](url)`.
+ */
+function formatShortcut(e: KeyboardEvent<HTMLTextAreaElement>) {
+  const key = e.key.toLowerCase();
+  if (!(e.metaKey || e.ctrlKey) || !(key in WRAPS || key === "k")) return;
   const el = e.currentTarget;
   const { selectionStart: s, selectionEnd: end } = el;
   const sel = el.value.slice(s, end);
-  const isUrl = /^https?:\/\/\S+$/.test(sel);
   e.preventDefault();
-  document.execCommand("insertText", false, isUrl ? `[](${sel})` : `[${sel}]()`);
-  const caret = isUrl || !sel ? s + 1 : s + sel.length + 3;
-  el.setSelectionRange(caret, caret);
+  if (key === "k") {
+    const isUrl = /^https?:\/\/\S+$/.test(sel);
+    document.execCommand("insertText", false, isUrl ? `[](${sel})` : `[${sel}]()`);
+    const caret = isUrl || !sel ? s + 1 : s + sel.length + 3;
+    return el.setSelectionRange(caret, caret);
+  }
+  const [open, close] = WRAPS[key];
+  document.execCommand("insertText", false, open + sel + close);
+  el.setSelectionRange(s + open.length, s + open.length + sel.length);
 }
 
 const card = "h-full w-full overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm";
@@ -114,14 +126,13 @@ function Note({ node, editing, onChange, onEditEnd }: Props & { node: TextNode }
           onBlur={onEditEnd}
           onKeyDown={(e) => {
             if (e.key === "Escape") e.currentTarget.blur();
-            else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") insertLink(e);
+            else formatShortcut(e);
           }}
         />
       ) : (
         <div data-body data-scroll className="md min-h-0 flex-1 overflow-auto p-3 text-sm">
           <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            components={{ a: (p) => <a href={p.href} target="_blank" rel="noreferrer" data-nodrag>{p.children}</a> }}
+            remarkPlugins={[remarkGfm]}            components={{ a: (p) => <a href={p.href} target="_blank" rel="noreferrer" data-nodrag>{p.children}</a> }}
           >
             {node.text}
           </ReactMarkdown>
