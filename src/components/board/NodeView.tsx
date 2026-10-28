@@ -72,7 +72,7 @@ function PreviewCard({ preview: p, onDismiss }: { preview: LinkPreview; onDismis
           src={p.image}
           alt=""
           draggable={false}
-          className={`bg-stone-100 object-cover ${p.small ? "h-16 w-16 shrink-0 rounded" : "aspect-[1.91/1] w-full"}`}
+          className={`bg-stone-100 object-cover ${p.small ? "h-16 w-16 shrink-0 rounded" : "aspect-[1.91/1] max-h-48 w-full"}`}
         />
       )}
       <div className={p.small ? "min-w-0 flex-1" : "p-3 pr-7"}>
