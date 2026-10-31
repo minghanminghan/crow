@@ -3,7 +3,7 @@
 import { type KeyboardEvent, type MouseEvent, type PointerEvent, useLayoutEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { type CanvasNode, type Side, type LinkPreview, type TextNode, fileKind } from "@/lib/canvas";
+import { type CanvasNode, type Side, type LinkPreview, type TextNode, FONT_SIZE, fileKind } from "@/lib/canvas";
 
 const SIDES: { side: Side; cls: string }[] = [
   { side: "top", cls: "left-1/2 top-0 -translate-x-1/2 -translate-y-1/2" },
@@ -97,15 +97,17 @@ function PreviewCard({ preview: p, onDismiss }: { preview: LinkPreview; onDismis
 /** A markdown note; grows taller when its text or link preview no longer fits. */
 function Note({ node, editing, onChange, onEditEnd }: Props & { node: TextNode }) {
   const ref = useRef<HTMLDivElement>(null);
-  const last = useRef({ text: node.text, preview: node.preview });
+  const last = useRef({ text: node.text, preview: node.preview, fontSize: node.fontSize });
   useLayoutEffect(() => {
-    if (last.current.text === node.text && last.current.preview === node.preview) return;
-    last.current = { text: node.text, preview: node.preview };
+    const l = last.current;
+    if (l.text === node.text && l.preview === node.preview && l.fontSize === node.fontSize) return;
+    last.current = { text: node.text, preview: node.preview, fontSize: node.fontSize };
     const el = ref.current!;
     const over = [...el.children].reduce((sum, c) => sum + Math.max(c.scrollHeight, (c as HTMLElement).offsetHeight), 0) - el.clientHeight;
     if (over > 0) onChange(node.id, { height: node.height + over });
   });
   const p = node.preview;
+  const font = { fontSize: node.fontSize ?? FONT_SIZE, lineHeight: 1.43 };
   const dismiss = (url: string) => {
     const shown = (ref.current!.firstElementChild as HTMLElement).offsetHeight;
     onChange(node.id, { preview: { url, hidden: true }, height: Math.max(40, node.height - shown) });
@@ -120,7 +122,8 @@ function Note({ node, editing, onChange, onEditEnd }: Props & { node: TextNode }
           data-body
           data-nodrag
           autoFocus
-          className="min-h-0 flex-1 resize-none select-text p-3 text-sm outline-none"
+          className="min-h-0 flex-1 resize-none select-text p-[0.86em] outline-none"
+          style={font}
           value={node.text}
           onChange={(e) => onChange(node.id, { text: e.target.value })}
           onBlur={onEditEnd}
@@ -130,7 +133,7 @@ function Note({ node, editing, onChange, onEditEnd }: Props & { node: TextNode }
           }}
         />
       ) : (
-        <div data-body data-scroll className="md min-h-0 flex-1 overflow-auto p-3 text-sm">
+        <div data-body data-scroll className="md min-h-0 flex-1 overflow-auto p-[0.86em]" style={font}>
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}            components={{ a: (p) => <a href={p.href} target="_blank" rel="noreferrer" data-nodrag>{p.children}</a> }}
           >

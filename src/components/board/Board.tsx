@@ -8,11 +8,13 @@ import {
   type Preview,
   type Side,
   type TextNode,
+  FONT_SIZE,
   fileKind,
   newId,
 } from "@/lib/canvas";
 import { applyChanges, diff } from "@/lib/diff";
 import EdgeLayer from "./EdgeLayer";
+import Help from "./Help";
 import NodeView from "./NodeView";
 import Toolbar, { type Tool } from "./Toolbar";
 import { type Point, type Rect, anchor, intersects, nearestSides, normalize } from "./geometry";
@@ -22,7 +24,7 @@ type View = { x: number; y: number; zoom: number };
 type Drag =
   | { kind: "pan"; sx: number; sy: number; vx: number; vy: number; moved: boolean }
   | { kind: "move"; sx: number; sy: number; start: Map<string, Point>; moved: boolean }
-  | { kind: "resize"; id: string; sx: number; sy: number; w: number; h: number; moved: boolean }
+  | { kind: "resize"; id: string; sx: number; sy: number; w: number; h: number; fs?: number; moved: boolean }
   | { kind: "connect"; from: string; side: Side }
   | { kind: "marquee"; start: Point };
 type Ghost = { rect: Rect } | { from: Point; to: Point } | null;
@@ -287,7 +289,8 @@ export default function Board({ id, initial, version: initialVersion }: { id: st
 
   const onResizeDown = (e: PointerEvent, nid: string) => {
     const n = get().nodes.find((n) => n.id === nid)!;
-    drag.current = { kind: "resize", id: nid, sx: e.clientX, sy: e.clientY, w: n.width, h: n.height, moved: false };
+    const fs = n.type === "text" ? (n.fontSize ?? FONT_SIZE) : undefined;
+    drag.current = { kind: "resize", id: nid, sx: e.clientX, sy: e.clientY, w: n.width, h: n.height, fs, moved: false };
   };
 
   const onHandleDown = (e: PointerEvent, nid: string, side: Side) => {
@@ -353,11 +356,21 @@ export default function Board({ id, initial, version: initialVersion }: { id: st
           { record: false },
         );
         break;
-      case "resize":
+      case "resize": {
         if (!d.moved) checkpoint();
         d.moved = true;
-        patchNode(d.id, { width: Math.max(80, Math.round(d.w + dx / z)), height: Math.max(40, Math.round(d.h + dy / z)) });
+        // Shift keeps the aspect ratio; Option keeps the text size (reflow) instead of scaling it.
+        let w = Math.max(80, d.w + dx / z);
+        let h = Math.max(40, d.h + dy / z);
+        if (e.shiftKey) {
+          const s = Math.max(w / d.w, h / d.h);
+          [w, h] = [d.w * s, d.h * s];
+        }
+        const patch: Partial<TextNode> = { width: Math.round(w), height: Math.round(h) };
+        if (d.fs && !e.altKey) patch.fontSize = Math.round(clamp((d.fs * w) / d.w, 6, 200) * 10) / 10;
+        patchNode(d.id, patch);
         break;
+      }
       case "connect": {
         const from = get().nodes.find((n) => n.id === d.from);
         if (from) setGhost({ from: anchor(from, d.side), to: toWorld(e) });
@@ -505,6 +518,7 @@ export default function Board({ id, initial, version: initialVersion }: { id: st
         <span className={`ml-auto ${status === "error" ? "text-red-600" : "text-stone-400"}`}>
           {status === "saving" ? "saving…" : status === "error" ? "save failed" : "saved ✓"}
         </span>
+        <Help />
       </header>
       <div className="relative min-h-0 flex-1">
         <div

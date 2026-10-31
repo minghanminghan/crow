@@ -14,7 +14,8 @@ export type BaseNode = {
 
 export type Preview = { title?: string; description?: string; image?: string; site?: string; small?: boolean };
 export type LinkPreview = Preview & { url: string; hidden?: boolean };
-export type TextNode = BaseNode & { type: "text"; text: string; preview?: LinkPreview };
+export type TextNode = BaseNode & { type: "text"; text: string; preview?: LinkPreview; fontSize?: number };
+export const FONT_SIZE = 14;
 export type FileNode = BaseNode & { type: "file"; file: string };
 export type CanvasNode = TextNode | FileNode;
 
