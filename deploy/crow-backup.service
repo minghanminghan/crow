@@ -1,0 +1,24 @@
+# Template: deploy/setup.sh installs it to /etc/systemd/system.
+# Started nightly by crow-backup.timer. Run now: sudo systemctl start crow-backup
+[Unit]
+Description=crow nightly data backup and cleanup
+ConditionPathExists=/opt/crow/current/deploy/backup.sh
+
+[Service]
+Type=oneshot
+User=crow
+Group=crow
+ExecStart=/opt/crow/current/deploy/backup.sh
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+PrivateNetwork=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/crow /var/backups/crow
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+CapabilityBoundingSet=

@@ -1,0 +1,24 @@
+# Template: deploy/setup.sh fills in @NODE_BIN@ and @PORT@ and installs it to /etc/systemd/system.
+[Unit]
+Description=crow whiteboard (next start)
+After=network.target
+ConditionPathExists=/opt/crow/current/package.json
+
+[Service]
+User=crow
+Group=crow
+WorkingDirectory=/opt/crow/current
+Environment=NODE_ENV=production
+Environment=PORT=@PORT@
+Environment=DATA_DIR=/var/lib/crow
+ExecStart=@NODE_BIN@ node_modules/next/dist/bin/next start -H 127.0.0.1 -p ${PORT}
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/crow
+
+[Install]
+WantedBy=multi-user.target
