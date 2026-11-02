@@ -7,12 +7,13 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build && pnpm build:cli",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
     "crow": "tsx src/cli/crow.ts",
-    "build:cli": "esbuild src/cli/crow.ts --bundle --platform=node --format=esm --outfile=dist/crow.mjs --banner:js='#!/usr/bin/env node'"
+    "build:cli": "esbuild src/cli/crow.ts --bundle --platform=node --format=esm --outfile=dist/crow.mjs --banner:js='#!/usr/bin/env node'",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "nanoid": "^6.0.2",
@@ -23,13 +24,18 @@
     "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
+    "@semantic-release/commit-analyzer": "^13.0.1",
+    "@semantic-release/github": "^12.0.10",
+    "@semantic-release/release-notes-generator": "^14.1.1",
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "conventional-changelog-conventionalcommits": "^10.4.1",
     "esbuild": "^0.28.2",
     "eslint": "^9",
     "eslint-config-next": "16.4.2",
+    "semantic-release": "^25.0.9",
     "tailwindcss": "^4",
     "tsx": "^4.23.15",
     "typescript": "^5",
