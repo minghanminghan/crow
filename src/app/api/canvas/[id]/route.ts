@@ -1,6 +1,6 @@
 import { connection } from "next/server";
 import { type Change, applyChanges } from "@/lib/diff";
-import { loadCanvas, updateCanvas } from "@/lib/store";
+import { deleteCanvas, loadCanvas, renameCanvas, updateCanvas } from "@/lib/store";
 
 export async function GET(_: Request, ctx: RouteContext<"/api/canvas/[id]">) {
   await connection();
@@ -28,4 +28,20 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/canvas/[id
   } catch {
     return new Response("save failed", { status: 500 });
   }
+}
+
+export async function PUT(request: Request, ctx: RouteContext<"/api/canvas/[id]">) {
+  const { id } = await ctx.params;
+  const body = await request.json().catch(() => null);
+  if (typeof body?.name !== "string" || !body.name) return Response.json({ error: "missing name" }, { status: 400 });
+  if (!(await loadCanvas(id))) return Response.json({ error: `no board "${id}"` }, { status: 404 });
+  await renameCanvas(id, body.name);
+  return Response.json({ id, name: body.name });
+}
+
+export async function DELETE(_: Request, ctx: RouteContext<"/api/canvas/[id]">) {
+  const { id } = await ctx.params;
+  if (!(await loadCanvas(id))) return Response.json({ error: `no board "${id}"` }, { status: 404 });
+  await deleteCanvas(id);
+  return Response.json({ deleted: id });
 }
