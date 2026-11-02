@@ -484,8 +484,8 @@ export default function Board({ id, initial, version: initialVersion }: { id: st
       onPointerDown={onNodeDown}
       onHandleDown={onHandleDown}
       onResizeDown={onResizeDown}
-      onChange={(nid, patch) => {
-        patchNode(nid, patch);
+      onChange={(nid, patch, record) => {
+        patchNode(nid, patch, record);
         if (typeof patch.text === "string") syncPreview(nid, patch.text);
       }}
       onEditEnd={endEdit}
@@ -516,7 +516,7 @@ export default function Board({ id, initial, version: initialVersion }: { id: st
           </button>
         )}
         <span className={`ml-auto ${status === "error" ? "text-red-600" : "text-stone-400"}`}>
-          {status === "saving" ? "saving…" : status === "error" ? "save failed" : "saved ✓"}
+          {status === "saving" ? "saving…" : status === "error" ? "save failed" : ""}
         </span>
         <Help />
       </header>
