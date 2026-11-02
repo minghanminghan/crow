@@ -12,6 +12,8 @@ const HELP: { title: string; items: [keys: string, action: string][] }[] = [
       ["Esc", "Stop editing"],
       ["⌘B / ⌘I", "Bold / italic"],
       ["⌘K", "Link"],
+      ["Enter on a - [ ] line", "Next checkbox"],
+      ["Click checkbox", "Check it off"],
       ["Paste link or image", "New note at cursor"],
     ],
   },

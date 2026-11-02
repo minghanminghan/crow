@@ -1,7 +1,7 @@
 "use client";
 
 import { type KeyboardEvent, type MouseEvent, type PointerEvent, useLayoutEffect, useRef } from "react";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { type CanvasNode, type Side, type LinkPreview, type TextNode, FONT_SIZE, fileKind } from "@/lib/canvas";
 
@@ -30,7 +30,7 @@ type Props = {
   onPointerDown: (e: PointerEvent, id: string) => void;
   onHandleDown: (e: PointerEvent, id: string, side: Side) => void;
   onResizeDown: (e: PointerEvent, id: string) => void;
-  onChange: (id: string, patch: Partial<CanvasNode>) => void;
+  onChange: (id: string, patch: Partial<CanvasNode>, record?: boolean) => void;
   onEditEnd: () => void;
 };
 
@@ -60,6 +60,36 @@ function formatShortcut(e: KeyboardEvent<HTMLTextAreaElement>) {
   document.execCommand("insertText", false, open + sel + close);
   el.setSelectionRange(s + open.length, s + open.length + sel.length);
 }
+
+/** Enter on a todo item starts the next one. Enter on an empty item ends the list. */
+function continueTask(e: KeyboardEvent<HTMLTextAreaElement>) {
+  if (e.key !== "Enter" || e.shiftKey || e.metaKey || e.ctrlKey || e.nativeEvent.isComposing) return;
+  const el = e.currentTarget;
+  const { selectionStart: s, selectionEnd: end, value } = el;
+  const start = value.lastIndexOf("\n", s - 1) + 1;
+  const m = /^(\s*[-*+] )\[[ xX]\] /.exec(value.slice(start, s));
+  if (s !== end || !m) return;
+  e.preventDefault();
+  if (m[0].length === s - start && !value.slice(s).split("\n")[0].trim()) {
+    el.setSelectionRange(start, s);
+    document.execCommand("delete");
+  } else document.execCommand("insertText", false, `\n${m[1]}[ ] `);
+}
+
+/** Flips the checkbox of the todo item that starts at `offset` in the text. */
+function toggleTask(text: string, offset: number) {
+  const m = /^(?:[-*+]|\d+[.)])\s+\[([ xX])\]/.exec(text.slice(offset));
+  if (!m) return text;
+  const i = offset + m[0].length - 2;
+  return text.slice(0, i) + (m[1] === " " ? "x" : " ") + text.slice(i + 1);
+}
+
+/** List items carry their source offset so a checkbox click can find its `[ ]`. Checkboxes skip focus so ⌘Z still works. */
+const MD: Components = {
+  a: (p) => <a href={p.href} target="_blank" rel="noreferrer" data-nodrag>{p.children}</a>,
+  li: ({ node, ...p }) => <li {...p} data-offset={node?.position?.start.offset} />,
+  input: (p) => <input type="checkbox" checked={p.checked} readOnly data-nodrag onMouseDown={keepFocus} />,
+};
 
 const card = "h-full w-full overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm";
 
@@ -97,6 +127,11 @@ function PreviewCard({ preview: p, onDismiss }: { preview: LinkPreview; onDismis
 /** A markdown note; grows taller when its text or link preview no longer fits. */
 function Note({ node, editing, onChange, onEditEnd }: Props & { node: TextNode }) {
   const ref = useRef<HTMLDivElement>(null);
+  const area = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const el = area.current;
+    if (editing && el) el.setSelectionRange(el.value.length, el.value.length);
+  }, [editing]);
   const last = useRef({ text: node.text, preview: node.preview, fontSize: node.fontSize });
   useLayoutEffect(() => {
     const l = last.current;
@@ -119,6 +154,7 @@ function Note({ node, editing, onChange, onEditEnd }: Props & { node: TextNode }
       )}
       {editing ? (
         <textarea
+          ref={area}
           data-body
           data-nodrag
           autoFocus
@@ -129,14 +165,25 @@ function Note({ node, editing, onChange, onEditEnd }: Props & { node: TextNode }
           onBlur={onEditEnd}
           onKeyDown={(e) => {
             if (e.key === "Escape") e.currentTarget.blur();
-            else formatShortcut(e);
+            else {
+              formatShortcut(e);
+              continueTask(e);
+            }
           }}
         />
       ) : (
-        <div data-body data-scroll className="md min-h-0 flex-1 overflow-auto p-[0.86em]" style={font}>
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}            components={{ a: (p) => <a href={p.href} target="_blank" rel="noreferrer" data-nodrag>{p.children}</a> }}
-          >
+        <div
+          data-body
+          data-scroll
+          className="md min-h-0 flex-1 overflow-auto p-[0.86em]"
+          style={font}
+          onClick={(e) => {
+            const t = e.target as HTMLElement;
+            const at = t instanceof HTMLInputElement && t.type === "checkbox" && t.closest("li")?.dataset.offset;
+            if (at) onChange(node.id, { text: toggleTask(node.text, Number(at)) }, true);
+          }}
+        >
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD}>
             {node.text}
           </ReactMarkdown>
         </div>
