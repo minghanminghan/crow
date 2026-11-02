@@ -1,10 +1,11 @@
-import { readFileSync } from "node:fs";
-import fs from "node:fs/promises";
+import { readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
-import { type Op, OpError, applyOps, find, view } from "../lib/ops";
-import { createCanvas, dataDir, deleteCanvas, listCanvases, loadCanvas, renameCanvas } from "../lib/store";
+import type { CanvasDoc, CanvasSummary } from "../lib/canvas";
+import { type Op, OpError, find, view } from "../lib/ops";
+import { VERSION, VERSION_HEADER } from "../lib/version";
+import { ApiError, api, call, serverUrl } from "./http";
 
-const HELP = `crow — read and edit boards in ./data (or $DATA_DIR). Output is JSON.
+const HELP = `crow — read and edit boards on the crow server ($CROW_URL). Output is JSON.
 
   crow ls                                   list boards
   crow new <name>                           create a board
@@ -17,6 +18,8 @@ const HELP = `crow — read and edit boards in ./data (or $DATA_DIR). Output is 
   crow arrow <board> <from> <to> [--label]  (alias: link)
   crow rm <board> <id...>                   delete nodes (and their arrows) or arrows
   crow batch <board>                        apply ops from stdin, all or nothing
+  crow config                               show the server url
+  crow upgrade                              replace this CLI with the server's version
 
 Ids can be shortened to any unique prefix. "-" reads text from stdin.
 New notes go right of --near (default: the last note), below anything in the way.
@@ -82,10 +85,10 @@ function flags(keys: string[]) {
 }
 
 async function boardId(ref: string) {
-  const files = await fs.readdir(dataDir()).catch(() => []);
-  const ids = files.filter((f) => f.endsWith(".canvas")).map((f) => ({ id: f.slice(0, -".canvas".length) }));
-  return find(ids, ref)?.id ?? fail(`no board "${ref}"`);
+  return find(await api<CanvasSummary[]>("/api/canvas"), ref)?.id ?? fail(`no board "${ref}"`);
 }
+
+const applyOps = async (id: string, ops: Op[]) => api<object[]>(`/api/canvas/${id}/ops`, "POST", ops);
 
 function readOps(): Op[] {
   const raw = stdin().trim();
@@ -101,26 +104,31 @@ async function one(op: Op) {
   return result;
 }
 
+/** Downloads the server's CLI bundle and swaps it in for the running file. */
+async function upgrade() {
+  const file = realpathSync(process.argv[1]);
+  if (!file.endsWith(".mjs")) fail(`cannot upgrade ${file}: not a built crow bundle`);
+  const res = await call("/cli/crow.mjs");
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, Buffer.from(await res.arrayBuffer()), { mode: 0o755 });
+  renameSync(tmp, file);
+  return { file, from: VERSION, to: res.headers.get(VERSION_HEADER) ?? "unknown" };
+}
+
 async function run(): Promise<unknown> {
   const [cmd] = args;
   switch (cmd) {
     case "ls":
-      return listCanvases();
+      return api("/api/canvas");
     case "new":
-      return { id: await createCanvas(need(1, "name")) };
-    case "rename": {
-      const id = await boardId(need(1, "board"));
-      await renameCanvas(id, need(2, "name"));
-      return { id, name: args[2] };
-    }
-    case "delete-board": {
-      const id = await boardId(need(1, "board"));
-      await deleteCanvas(id);
-      return { deleted: id };
-    }
+      return api("/api/canvas", "POST", { name: need(1, "name") });
+    case "rename":
+      return api(`/api/canvas/${await boardId(need(1, "board"))}`, "PUT", { name: need(2, "name") });
+    case "delete-board":
+      return api(`/api/canvas/${await boardId(need(1, "board"))}`, "DELETE");
     case "show": {
       const id = await boardId(need(1, "board"));
-      return { id, ...view((await loadCanvas(id))!.doc, { short: opt.short, ...flags(["includes", "links", "type"]) }) };
+      return { id, ...view(await api<CanvasDoc>(`/api/canvas/${id}`), { short: opt.short, ...flags(["includes", "links", "type"]) }) };
     }
     case "add":
       return one({ op: "add", text: text(need(2, "text")), ...flags(["near", "x", "y", "width", "height", "color"]) });
@@ -133,6 +141,10 @@ async function run(): Promise<unknown> {
       return one({ op: "rm", ids: args.slice(2) });
     case "batch":
       return applyOps(await boardId(need(1, "board")), readOps());
+    case "config":
+      return { url: serverUrl() };
+    case "upgrade":
+      return upgrade();
     default:
       console.log(HELP);
       return undefined;
@@ -142,7 +154,7 @@ async function run(): Promise<unknown> {
 run().then(
   (out) => out !== undefined && console.log(JSON.stringify(out, null, 2)),
   (e) => {
-    console.error(JSON.stringify({ error: e instanceof Fail || e instanceof OpError ? e.message : String(e) }));
+    console.error(JSON.stringify({ error: e instanceof Fail || e instanceof OpError || e instanceof ApiError ? e.message : String(e) }));
     process.exit(1);
   },
 );
