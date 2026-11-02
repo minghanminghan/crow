@@ -108,8 +108,9 @@ VERCEL_API_TOKEN=$VERCEL_API_TOKEN node --input-type=module -e '
 step "health check: https://$HOST"
 for _ in $(seq 1 60); do
   code=$(curl -sS -o /dev/null -w '%{http_code}' --resolve "$HOST:443:$IP4" "https://$HOST/" 2>/dev/null || true)
-  [[ $code =~ ^[2-4] ]] && break
+  [[ $code =~ ^[2-5] ]] && break
   sleep 2
 done
-[[ $code =~ ^[2-4] ]] || die "https://$HOST did not answer (cert not issued yet?). See journalctl -u caddy"
+# Any HTTP answer (even 502 before the first deploy) means DNS and the cert work.
+[[ $code =~ ^[2-5] ]] || die "https://$HOST did not answer (cert not issued yet?). See journalctl -u caddy"
 echo "    https://$HOST answers ($code)"

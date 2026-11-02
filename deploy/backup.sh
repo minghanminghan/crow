@@ -9,7 +9,8 @@ DATA=${DATA_DIR:-/var/lib/crow}
 BACKUPS=${CROW_BACKUPS:-/var/backups/crow}
 
 file=$BACKUPS/crow-$(date -u +%Y%m%dT%H%M%SZ).tar.gz
-tar -czf "$file.tmp" -C "$DATA" .
+# Boards saved during the backup make GNU tar exit 1 ("file changed"); only exit 2+ is a real failure.
+tar -czf "$file.tmp" --exclude='*.tmp' --exclude='*.lock' -C "$DATA" . || { (($? == 1)) || { rm -f "$file.tmp"; exit 1; }; }
 mv "$file.tmp" "$file"
 echo "backup: $file"
 [[ ${1:-} == --backup-only ]] && exit 0

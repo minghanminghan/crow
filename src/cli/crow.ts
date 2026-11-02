@@ -107,7 +107,7 @@ async function one(op: Op) {
 /** Downloads the server's CLI bundle and swaps it in for the running file. */
 async function upgrade() {
   const file = realpathSync(process.argv[1]);
-  if (!file.endsWith(".mjs")) fail(`cannot upgrade ${file}: not a built crow bundle`);
+  if (!readFileSync(file, "utf8").startsWith("#!/usr/bin/env node")) fail(`cannot upgrade ${file}: not a built crow bundle`);
   const res = await call("/cli/crow.mjs");
   const tmp = `${file}.${process.pid}.tmp`;
   writeFileSync(tmp, Buffer.from(await res.arrayBuffer()), { mode: 0o755 });
