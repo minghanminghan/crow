@@ -78,13 +78,11 @@ function continueTask(e: KeyboardEvent<HTMLTextAreaElement>) {
   } else document.execCommand("insertText", false, `\n${m[1]}[ ] `);
 }
 
-const FETCHING = "Fetching title…";
-
 /**
- * Obsidian-style link paste. Over a selection it makes `[selection](url)`. Elsewhere it inserts a
- * placeholder link, then swaps in `[page title](url)`, or the bare URL if there is no title.
+ * Obsidian-style link paste. Over a selection it makes `[selection](url)`. Elsewhere it locks the
+ * note while it fetches the page title, then inserts `[page title](url)`, or the bare URL if there is no title.
  */
-function pasteLink(e: ClipboardEvent<HTMLTextAreaElement>, swap: (from: string, to: string) => void) {
+function pasteLink(e: ClipboardEvent<HTMLTextAreaElement>, insert: (s: number, end: number, link: string) => void) {
   const url = e.clipboardData.getData("text/plain").trim();
   const el = e.currentTarget;
   const { selectionStart: s, selectionEnd: end, value } = el;
@@ -92,12 +90,17 @@ function pasteLink(e: ClipboardEvent<HTMLTextAreaElement>, swap: (from: string, 
   if (!URL_RE.test(url) || URL_RE.test(sel) || /[(<]$/.test(value.slice(0, s))) return;
   e.preventDefault();
   if (sel.trim()) return void document.execCommand("insertText", false, `[${sel}](${url})`);
-  const placeholder = `[${FETCHING}](${url})`;
-  document.execCommand("insertText", false, placeholder);
+  el.readOnly = true;
   fetch(`/api/preview?url=${encodeURIComponent(url)}`)
     .then((r) => r.json() as Promise<Preview>)
     .catch((): Preview => ({}))
-    .then(({ title }) => swap(placeholder, title ? `[${title.replace(/[[\]]/g, "\\$&")}](${url})` : url));
+    .then(({ title }) => {
+      el.readOnly = false;
+      const link = title ? `[${title.replace(/[[\]]/g, "\\$&")}](${url})` : url;
+      if (document.activeElement !== el) return insert(s, end, link);
+      el.setSelectionRange(s, end);
+      document.execCommand("insertText", false, link);
+    });
 }
 
 /** Flips the checkbox of the todo item that starts at `offset` in the text. */
@@ -167,9 +170,8 @@ function Note({ node, editing, onChange, onEditEnd }: Props & { node: TextNode }
   });
   const text = useRef(node.text);
   useLayoutEffect(() => void (text.current = node.text));
-  const swap = (from: string, to: string) => {
-    if (text.current.includes(from)) onChange(node.id, { text: text.current.replace(from, to) });
-  };
+  const insert = (s: number, end: number, link: string) =>
+    onChange(node.id, { text: text.current.slice(0, s) + link + text.current.slice(end) });
   const p = node.preview;
   const font = { fontSize: node.fontSize ?? FONT_SIZE, lineHeight: 1.43 };
   const dismiss = (url: string) => {
@@ -191,8 +193,8 @@ function Note({ node, editing, onChange, onEditEnd }: Props & { node: TextNode }
           style={font}
           value={node.text}
           onChange={(e) => onChange(node.id, { text: e.target.value })}
-          onBlur={onEditEnd}
-          onPaste={(e) => pasteLink(e, swap)}
+          onBlur={() => document.hasFocus() && onEditEnd()}
+          onPaste={(e) => pasteLink(e, insert)}
           onKeyDown={(e) => {
             if (e.key === "Escape") e.currentTarget.blur();
             else {
