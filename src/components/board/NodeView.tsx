@@ -1,9 +1,11 @@
 "use client";
 
-import { type KeyboardEvent, type MouseEvent, type PointerEvent, useLayoutEffect, useRef } from "react";
+import { type ClipboardEvent, type KeyboardEvent, type MouseEvent, type PointerEvent, useLayoutEffect, useRef } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { type CanvasNode, type Side, type LinkPreview, type TextNode, FONT_SIZE, fileKind } from "@/lib/canvas";
+import { type CanvasNode, type Side, type LinkPreview, type Preview, type TextNode, FONT_SIZE, fileKind } from "@/lib/canvas";
+
+const URL_RE = /^https?:\/\/\S+$/;
 
 const SIDES: { side: Side; cls: string }[] = [
   { side: "top", cls: "left-1/2 top-0 -translate-x-1/2 -translate-y-1/2" },
@@ -51,7 +53,7 @@ function formatShortcut(e: KeyboardEvent<HTMLTextAreaElement>) {
   const sel = el.value.slice(s, end);
   e.preventDefault();
   if (key === "k") {
-    const isUrl = /^https?:\/\/\S+$/.test(sel);
+    const isUrl = URL_RE.test(sel);
     document.execCommand("insertText", false, isUrl ? `[](${sel})` : `[${sel}]()`);
     const caret = isUrl || !sel ? s + 1 : s + sel.length + 3;
     return el.setSelectionRange(caret, caret);
@@ -74,6 +76,28 @@ function continueTask(e: KeyboardEvent<HTMLTextAreaElement>) {
     el.setSelectionRange(start, s);
     document.execCommand("delete");
   } else document.execCommand("insertText", false, `\n${m[1]}[ ] `);
+}
+
+const FETCHING = "Fetching title…";
+
+/**
+ * Obsidian-style link paste. Over a selection it makes `[selection](url)`. Elsewhere it inserts a
+ * placeholder link, then swaps in `[page title](url)`, or the bare URL if there is no title.
+ */
+function pasteLink(e: ClipboardEvent<HTMLTextAreaElement>, swap: (from: string, to: string) => void) {
+  const url = e.clipboardData.getData("text/plain").trim();
+  const el = e.currentTarget;
+  const { selectionStart: s, selectionEnd: end, value } = el;
+  const sel = value.slice(s, end);
+  if (!URL_RE.test(url) || URL_RE.test(sel) || /[(<]$/.test(value.slice(0, s))) return;
+  e.preventDefault();
+  if (sel.trim()) return void document.execCommand("insertText", false, `[${sel}](${url})`);
+  const placeholder = `[${FETCHING}](${url})`;
+  document.execCommand("insertText", false, placeholder);
+  fetch(`/api/preview?url=${encodeURIComponent(url)}`)
+    .then((r) => r.json() as Promise<Preview>)
+    .catch((): Preview => ({}))
+    .then(({ title }) => swap(placeholder, title ? `[${title.replace(/[[\]]/g, "\\$&")}](${url})` : url));
 }
 
 /** Flips the checkbox of the todo item that starts at `offset` in the text. */
@@ -141,6 +165,11 @@ function Note({ node, editing, onChange, onEditEnd }: Props & { node: TextNode }
     const over = [...el.children].reduce((sum, c) => sum + Math.max(c.scrollHeight, (c as HTMLElement).offsetHeight), 0) - el.clientHeight;
     if (over > 0) onChange(node.id, { height: node.height + over });
   });
+  const text = useRef(node.text);
+  useLayoutEffect(() => void (text.current = node.text));
+  const swap = (from: string, to: string) => {
+    if (text.current.includes(from)) onChange(node.id, { text: text.current.replace(from, to) });
+  };
   const p = node.preview;
   const font = { fontSize: node.fontSize ?? FONT_SIZE, lineHeight: 1.43 };
   const dismiss = (url: string) => {
@@ -163,6 +192,7 @@ function Note({ node, editing, onChange, onEditEnd }: Props & { node: TextNode }
           value={node.text}
           onChange={(e) => onChange(node.id, { text: e.target.value })}
           onBlur={onEditEnd}
+          onPaste={(e) => pasteLink(e, swap)}
           onKeyDown={(e) => {
             if (e.key === "Escape") e.currentTarget.blur();
             else {
