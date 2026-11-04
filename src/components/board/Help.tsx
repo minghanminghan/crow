@@ -17,6 +17,7 @@ const HELP: { title: string; items: [keys: string, action: string][] }[] = [
       ["Enter on a - [ ] line", "Next checkbox"],
       ["Click checkbox", "Check it off"],
       ["Paste link or image", "New note at cursor"],
+      ["⇧ + drag note", "Move in one direction"],
     ],
   },
   {
