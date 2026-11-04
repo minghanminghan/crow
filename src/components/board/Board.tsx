@@ -345,12 +345,14 @@ export default function Board({ id, initial, version: initialVersion }: { id: st
         if (!d.moved && !far) break;
         if (!d.moved) checkpoint();
         d.moved = true;
+        // Shift locks the move to the main axis.
+        const [mx, my] = !e.shiftKey ? [dx, dy] : Math.abs(dx) > Math.abs(dy) ? [dx, 0] : [0, dy];
         set(
           (doc) => ({
             ...doc,
             nodes: doc.nodes.map((n) => {
               const s = d.start.get(n.id);
-              return s ? { ...n, x: Math.round(s.x + dx / z), y: Math.round(s.y + dy / z) } : n;
+              return s ? { ...n, x: Math.round(s.x + mx / z), y: Math.round(s.y + my / z) } : n;
             }),
           }),
           { record: false },
