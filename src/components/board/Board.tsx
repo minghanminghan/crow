@@ -361,23 +361,43 @@ export default function Board({ id, initial, version: initialVersion }: { id: st
         if (far) d.moved = true;
         if (d.moved) setView({ ...viewRef.current, x: d.vx + dx, y: d.vy + dy });
         break;
-      case "move":
+      case "move": {
         if (!d.moved && !far) break;
         if (!d.moved) checkpoint();
         d.moved = true;
         // Shift locks the move to the main axis.
-        const [mx, my] = !e.shiftKey ? [dx, dy] : Math.abs(dx) > Math.abs(dy) ? [dx, 0] : [0, dy];
+        const lock = !e.shiftKey ? null : Math.abs(dx) > Math.abs(dy) ? "y" : "x";
+        let mx = lock === "x" ? 0 : dx / z;
+        let my = lock === "y" ? 0 : dy / z;
+        // Snap centers to connected, unmoved notes so their arrows run straight (free axes only).
+        const { nodes, edges } = get();
+        const byId = new Map(nodes.map((n) => [n.id, n]));
+        let [gx, gy] = [8 / z, 8 / z];
+        for (const ed of edges) {
+          const [mid, oid] = d.start.has(ed.fromNode) ? [ed.fromNode, ed.toNode] : [ed.toNode, ed.fromNode];
+          const m = byId.get(mid);
+          const o = byId.get(oid);
+          const s = d.start.get(mid);
+          if (!m || !o || !s || d.start.has(oid)) continue;
+          const cx = o.x + o.width / 2 - (s.x + mx + m.width / 2);
+          const cy = o.y + o.height / 2 - (s.y + my + m.height / 2);
+          if (lock !== "x" && Math.abs(cx) < Math.abs(gx)) gx = cx;
+          if (lock !== "y" && Math.abs(cy) < Math.abs(gy)) gy = cy;
+        }
+        if (Math.abs(gx) < 8 / z) mx += gx;
+        if (Math.abs(gy) < 8 / z) my += gy;
         set(
           (doc) => ({
             ...doc,
             nodes: doc.nodes.map((n) => {
               const s = d.start.get(n.id);
-              return s ? { ...n, x: Math.round(s.x + mx / z), y: Math.round(s.y + my / z) } : n;
+              return s ? { ...n, x: Math.round(s.x + mx), y: Math.round(s.y + my) } : n;
             }),
           }),
           { record: false },
         );
         break;
+      }
       case "resize": {
         if (!d.moved) checkpoint();
         d.moved = true;
