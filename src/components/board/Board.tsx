@@ -229,15 +229,7 @@ export default function Board({ id, initial, version: initialVersion }: { id: st
     setEditing(eid);
   };
 
-  const endEdit = () => {
-    const d = get();
-    const n = d.nodes.find((n) => n.id === editing);
-    if (n?.type === "text" && !n.text.trim()) {
-      const edges = d.edges.filter((e) => e.fromNode !== n.id && e.toNode !== n.id);
-      set({ ...d, nodes: d.nodes.filter((x) => x.id !== n.id), edges }, { record: false });
-    }
-    setEditing(null);
-  };
+  const endEdit = () => setEditing(null);
 
   // --- pointer input ---
   const startPan = (e: ClientPoint) => {
