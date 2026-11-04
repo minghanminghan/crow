@@ -381,7 +381,7 @@ export default function Board({ id, initial, version: initialVersion }: { id: st
       case "resize": {
         if (!d.moved) checkpoint();
         d.moved = true;
-        // Shift keeps the aspect ratio; Option keeps the text size (reflow) instead of scaling it.
+        // Shift keeps the aspect ratio; Option scales the text with the box.
         let w = Math.max(80, d.w + dx / z);
         let h = Math.max(40, d.h + dy / z);
         if (e.shiftKey) {
@@ -389,7 +389,7 @@ export default function Board({ id, initial, version: initialVersion }: { id: st
           [w, h] = [d.w * s, d.h * s];
         }
         const patch: Partial<TextNode> = { width: Math.round(w), height: Math.round(h) };
-        if (d.fs && !e.altKey) patch.fontSize = Math.round(clamp((d.fs * w) / d.w, 6, 200) * 10) / 10;
+        if (d.fs && e.altKey) patch.fontSize = Math.round(clamp((d.fs * w) / d.w, 6, 200) * 10) / 10;
         patchNode(d.id, patch);
         break;
       }

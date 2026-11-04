@@ -23,9 +23,9 @@ const HELP: { title: string; items: [keys: string, action: string][] }[] = [
   {
     title: "Resize",
     items: [
-      ["Drag corner", "Resize and scale text"],
+      ["Drag corner", "Resize"],
       ["⇧ + drag corner", "Keep shape"],
-      ["⌥ + drag corner", "Keep text size"],
+      ["⌥ + drag corner", "Resize and scale text"],
     ],
   },
   {
