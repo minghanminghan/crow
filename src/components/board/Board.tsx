@@ -17,7 +17,7 @@ import EdgeLayer from "./EdgeLayer";
 import Help from "./Help";
 import NodeView from "./NodeView";
 import Toolbar, { type Tool } from "./Toolbar";
-import { type Point, type Rect, anchor, intersects, nearestSides, normalize } from "./geometry";
+import { DIR, type Point, type Rect, anchor, intersects, nearestSides, normalize } from "./geometry";
 import { useHistory } from "./useHistory";
 
 type View = { x: number; y: number; zoom: number };
@@ -30,6 +30,7 @@ type Drag =
 type Ghost = { rect: Rect } | { from: Point; to: Point } | null;
 type ClientPoint = { clientX: number; clientY: number };
 
+const NOTE = { width: 260, height: 140 };
 const URL_RE = /^https?:\/\/\S+$/;
 const URL_IN_TEXT = /https?:\/\/[^\s<>()]+/;
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
@@ -190,7 +191,7 @@ export default function Board({ id, initial, version: initialVersion }: { id: st
   };
 
   const addNote = (at: Point, text = "") => {
-    const node: TextNode = { id: newId(), type: "text", text, x: Math.round(at.x), y: Math.round(at.y), width: 260, height: 140 };
+    const node: TextNode = { id: newId(), type: "text", text, x: Math.round(at.x), y: Math.round(at.y), ...NOTE };
     addNode(node, !text);
     if (text) syncPreview(node.id, text);
   };
@@ -231,7 +232,10 @@ export default function Board({ id, initial, version: initialVersion }: { id: st
   const endEdit = () => {
     const d = get();
     const n = d.nodes.find((n) => n.id === editing);
-    if (n?.type === "text" && !n.text.trim()) set({ ...d, nodes: d.nodes.filter((x) => x.id !== n.id) }, { record: false });
+    if (n?.type === "text" && !n.text.trim()) {
+      const edges = d.edges.filter((e) => e.fromNode !== n.id && e.toNode !== n.id);
+      set({ ...d, nodes: d.nodes.filter((x) => x.id !== n.id), edges }, { record: false });
+    }
     setEditing(null);
   };
 
@@ -320,6 +324,22 @@ export default function Board({ id, initial, version: initialVersion }: { id: st
           ...doc,
           edges: [...doc.edges, { id: newId(), fromNode: from.id, fromSide: d.side, toNode: target.id, toSide }],
         }));
+      } else if (!target && from?.type === "text") {
+        // Released on blank canvas: new note whose facing side sits at the release point.
+        const a = anchor(from, d.side);
+        const [dx, dy] = [p.x - a.x, p.y - a.y];
+        if (Math.hypot(dx, dy) < pad) return;
+        const toSide: Side = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "left" : "right") : dy > 0 ? "top" : "bottom";
+        const x = Math.round(p.x - ((DIR[toSide].x + 1) * NOTE.width) / 2);
+        const y = Math.round(p.y - ((DIR[toSide].y + 1) * NOTE.height) / 2);
+        const node: TextNode = { id: newId(), type: "text", text: "", x, y, ...NOTE };
+        set((doc) => ({
+          ...doc,
+          nodes: [...doc.nodes, node],
+          edges: [...doc.edges, { id: newId(), fromNode: from.id, fromSide: d.side, toNode: node.id, toSide }],
+        }));
+        setSelected(new Set([node.id]));
+        setEditing(node.id);
       }
     } else if (d.kind === "marquee") {
       const r = normalize(d.start, p);

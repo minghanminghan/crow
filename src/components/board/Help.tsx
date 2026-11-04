@@ -37,6 +37,7 @@ const HELP: { title: string; items: [keys: string, action: string][] }[] = [
       ["⇧ + drag canvas", "Box select"],
       ["⇧ + click", "Add to selection"],
       ["Drag side dot to note", "Connect"],
+      ["Drag side dot to blank", "Connect new note"],
     ],
   },
   {
