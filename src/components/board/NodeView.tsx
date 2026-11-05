@@ -1,6 +1,6 @@
 "use client";
 
-import { type ClipboardEvent, type KeyboardEvent, type MouseEvent, type PointerEvent, useLayoutEffect, useRef } from "react";
+import { type ClipboardEvent, type KeyboardEvent, type MouseEvent, type PointerEvent, useLayoutEffect, useRef, useState } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { type CanvasNode, type Side, type LinkPreview, type Preview, type TextNode, FONT_SIZE, fileKind } from "@/lib/canvas";
@@ -151,6 +151,16 @@ function PreviewCard({ preview: p, onDismiss }: { preview: LinkPreview; onDismis
   );
 }
 
+/** True when the pointer is in the textarea's padding, which drags the note instead of selecting text. */
+function onEdge(e: PointerEvent<HTMLTextAreaElement>) {
+  const el = e.currentTarget;
+  const r = el.getBoundingClientRect();
+  const s = r.width / el.offsetWidth;
+  const pad = parseFloat(getComputedStyle(el).paddingTop);
+  const [x, y] = [(e.clientX - r.left) / s, (e.clientY - r.top) / s];
+  return x < pad || y < pad || y > el.clientHeight - pad || (x > el.clientWidth - pad && x < el.clientWidth);
+}
+
 /** A markdown note; grows taller when its text or link preview no longer fits. */
 function Note({ node, editing, onChange, onEditEnd }: Props & { node: TextNode }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -172,6 +182,7 @@ function Note({ node, editing, onChange, onEditEnd }: Props & { node: TextNode }
   useLayoutEffect(() => void (text.current = node.text));
   const insert = (s: number, end: number, link: string) =>
     onChange(node.id, { text: text.current.slice(0, s) + link + text.current.slice(end) });
+  const [grab, setGrab] = useState(false);
   const p = node.preview;
   const font = { fontSize: node.fontSize ?? FONT_SIZE, lineHeight: 1.43 };
   const dismiss = (url: string) => {
@@ -187,10 +198,12 @@ function Note({ node, editing, onChange, onEditEnd }: Props & { node: TextNode }
         <textarea
           ref={area}
           data-body
-          data-nodrag
+          data-nodrag={grab ? undefined : true}
           autoFocus
           className="min-h-0 flex-1 resize-none select-text p-[0.86em] outline-none"
-          style={font}
+          style={{ ...font, cursor: grab ? "default" : undefined }}
+          onPointerMove={(e) => setGrab(onEdge(e))}
+          onPointerDown={(e) => grab && e.preventDefault()}
           value={node.text}
           onChange={(e) => onChange(node.id, { text: e.target.value })}
           onBlur={() => document.hasFocus() && onEditEnd()}
