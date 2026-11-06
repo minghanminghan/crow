@@ -1,4 +1,4 @@
-# Template: deploy/setup.sh installs it to /etc/systemd/system.
+# Template: hawk setup installs it to /etc/systemd/system.
 # Started nightly by crow-backup.timer. Run now: sudo systemctl start crow-backup
 [Unit]
 Description=crow nightly data backup and cleanup
