@@ -558,11 +558,6 @@ export default function Board({ id, initial, version: initialVersion }: { id: st
         <div
           ref={canvasRef}
           className={`absolute inset-0 overflow-hidden ${tool === "select" ? "cursor-default" : "cursor-crosshair"}`}
-          style={{
-            backgroundImage: "radial-gradient(#d6d3d1 1px, transparent 1px)",
-            backgroundSize: `${24 * view.zoom}px ${24 * view.zoom}px`,
-            backgroundPosition: `${view.x}px ${view.y}px`,
-          }}
           onPointerDown={onCanvasDown}
           onDoubleClick={onDoubleClick}
           onDragOver={(e) => e.preventDefault()}
