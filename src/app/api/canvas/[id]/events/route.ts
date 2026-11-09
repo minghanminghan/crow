@@ -1,5 +1,6 @@
 import { type FSWatcher, mkdirSync, watch } from "node:fs";
 import { connection } from "next/server";
+import { onShutdown } from "@/lib/shutdown";
 import { dataDir } from "@/lib/store";
 
 /** Server-sent events: pushes "change" whenever this canvas file is rewritten (by the app or the CLI). */
@@ -9,9 +10,11 @@ export async function GET(request: Request, ctx: RouteContext<"/api/canvas/[id]/
   const name = `${id}.canvas`;
   let watcher: FSWatcher | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let offShutdown: () => void = () => {};
   const stop = () => {
     clearTimeout(timer);
     watcher?.close();
+    offShutdown();
   };
   const stream = new ReadableStream({
     start(c) {
@@ -22,10 +25,14 @@ export async function GET(request: Request, ctx: RouteContext<"/api/canvas/[id]/
         clearTimeout(timer);
         timer = setTimeout(() => c.enqueue(new TextEncoder().encode("data: change\n\n")), 50);
       });
-      request.signal.addEventListener("abort", () => {
+      const end = () => {
         stop();
-        c.close();
-      });
+        try {
+          c.close();
+        } catch {}
+      };
+      request.signal.addEventListener("abort", end);
+      offShutdown = onShutdown(end);
     },
     cancel: stop,
   });
